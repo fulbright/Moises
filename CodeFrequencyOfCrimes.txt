@@ -1,0 +1,189 @@
+---				
+title: "FrequencyOfIncidents"				
+output:				
+ html_document:				
+ number_sections: yes				
+ toc: yes				
+---				
+				
+This is an analysis of the incident types in 2013 of LACSD data.				
+				
+```{r}				
+# create and run fuction ipak from https://gist.github.com/stevenworthington/3178163				
+# ipak function: install and load multiple R packages.				
+# check to see if packages are installed. Install them if they are not, then load them into the R session.				
+ 				
+ipak <- function(pkg){				
+	new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]				
+	if (length(new.pkg)) 				
+	install.packages(new.pkg, dependencies = TRUE)				
+	sapply(pkg, require, character.only = TRUE)				
+}				
+ 				
+# usage				
+packages <- c("scales","ggplot2","sqldf")				
+ipak(packages)				
+ 				
+				
+# data is in this site				
+# http://shq.lasdnews.net/CrimeStats/CAASS/desc.html				
+				
+# download the file that has 2013 data for the analysis				
+list2013 <- read.csv("http://shq.lasdnews.net/CrimeStats/CAASS/2013-PART_I_AND_II_CRIMES.csv", 
+	header = TRUE, stringsAsFactors=FALSE)				
+				
+str(list2013)
+
+# create counts by category
+countIncidentsByCat <- aggregate(STAT ~ CATEGORY, data = list2013, length)				
+countIncidentsByCat				
+				
+# drop the records that are for accidents or non-criminal types				
+list2013Crimes <- subset(list2013 , CATEGORY != 'ACCIDENTS TRAFFIC/VEH./BOAT' &				
+	CATEGORY != 'ACCIDENTS MISCELLANEOUS' &				
+	CATEGORY != 'MISCELLANEOUS NON-CRIMINAL' )				
+				
+# determine the number of records excluded				
+				
+NROW(list2013Crimes) - NROW(list2013)				
+				
+# format the incident dates into actual dates				
+list2013Crimes$IncidentDate <- as.POSIXct(list2013Crimes$INCIDENT_DATE, format = "%m/%d/%Y")				
+list2013Crimes$IncidentDateHour <- as.POSIXct(list2013Crimes$INCIDENT_DATE, format = "%m/%d/%Y %H:%M")				
+				
+# get the am or pm part of the time				
+list2013Crimes$amPm <- substr(list2013Crimes$INCIDENT_DATE, nchar(list2013Crimes$INCIDENT_DATE)-2,nchar(list2013Crimes$INCIDENT_DATE))				
+				
+# create groups by month, day of the month, week day, and hour				
+list2013Crimes$IncidentDay <- as.numeric(strftime(list2013Crimes$IncidentDate, format = "%d"))				
+list2013Crimes$WeekDay <- strftime(list2013Crimes$IncidentDate, format = "%a")				
+list2013Crimes$Month <-strftime(list2013Crimes$IncidentDate, format = "%b")				
+list2013Crimes$Month <- as.factor(list2013Crimes$Month)				
+list2013Crimes$HourDay <- strftime(list2013Crimes$IncidentDateHour, format = "%H")				
+				
+# combine the am/pm part of the time with the hour of the day				
+list2013Crimes$HourDayWhle <- paste (list2013Crimes$HourDay,list2013Crimes$amPm, sep = "")				
+				
+str(list2013Crimes)				
+head(list2013Crimes)				
+				
+# order weekdays				
+unique(list2013Crimes$WeekDay)				
+list2013Crimes$WeekDay <- ordered(list2013Crimes$WeekDay, levels = c("Sun","Mon","Tue","Wed", "Thu", "Fri","Sat" ))				
+levels(list2013Crimes$WeekDay)				
+				
+# order months				
+unique(list2013Crimes$Month)				
+list2013Crimes$Month <- ordered(list2013Crimes$Month, levels = c("Jan","Feb", "Mar","Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" ))				
+levels(list2013Crimes$Month)				
+				
+# visually inspect the data				
+str(list2013Crimes)				
+summary(list2013Crimes)				
+head(list2013Crimes)				
+tail(list2013Crimes)				
+				
+# exclude the records that have missing times				
+				
+list2013CrimesValidTime <- sqldf("select * 				
+ from list2013Crimes				
+where (HourDayWhle NOT LIKE '%NA%')")				
+				
+str(list2013CrimesValidTime)				
+				
+# total records not included for the time analysis				
+				
+NROW(list2013CrimesValidTime)-NROW(list2013Crimes)				
+				
+# order hours				
+				
+unique(list2013CrimesValidTime$HourDayWhle)				
+	list2013CrimesValidTime$HourDayWhle <- ordered(list2013CrimesValidTime$HourDayWhle , 
+	levels = c("12 AM","01 AM", "02 AM", "03 AM","04 AM", "05 AM","06 AM","07 AM","08 AM","09 AM", 
+	"10 AM", "11 AM", "12 PM","01 PM", "02 PM", "03 PM", "04 PM" , "05 PM","06 PM","07 PM","08 PM",
+	"09 PM", "10 PM", "11 PM"))				
+levels(list2013CrimesValidTime$HourDayWhle)				
+				
+# now give them numeric values to the hours 				
+levels(list2013CrimesValidTime$HourDayWhle) <- c("0","1","2","3","4","5","6","7","8","9","10",
+	"11","12","13","14","15","16","17","18","19","20","21","22","23")				
+list2013CrimesValidTime$HourDayWhle <- as.factor(list2013CrimesValidTime$HourDayWhle)				
+				
+# create counts by month, month day, week day and hour as a check against the graph output				
+				
+countIncidentsByCatMonth <- aggregate(STAT ~ CATEGORY + Month , data = list2013Crimes, length)				
+countIncidentsByCatMonth				
+				
+countIncidentsByCatDay <- aggregate(STAT ~ CATEGORY + IncidentDay, data = list2013Crimes, length)				
+countIncidentsByCatDay				
+				
+countIncidentsByCatWeekDay <- aggregate(STAT ~ CATEGORY + WeekDay, data = list2013Crimes, length)				
+countIncidentsByCatWeekDay				
+				
+countIncidentsByCatHourDayWhle <- aggregate(STAT ~ CATEGORY + HourDayWhle, data = list2013CrimesValidTime, length)				
+countIncidentsByCatHourDayWhle				
+				
+				
+# output the graphs on a PDF file				
+# code for bar graphs, which are not very visually appealing				
+				
+pdf("C:/Users/E551910/Desktop/IncidentsLines2013.pdf", onefile=T, paper='letter', height=10, width=7.5)				
+				
+ggplot(list2013Crimes, aes(Month, colour = CATEGORY)) +				
+	geom_freqpoly(aes(group = CATEGORY), size = 1, alpha = .5) + facet_wrap(~ CATEGORY, nrow = 9) +				
+	theme(text = element_text(size = 8,family = "mono", face = "bold"),				
+	axis.text.x = element_text(angle=90, vjust = 1)) +				
+	theme(legend.position="none") +				
+	theme(strip.text.x = element_text(size = 6, colour = "red", angle = 0)) +		
+	xlab('Month') +				
+	ylab('Frequency') +				
+	scale_y_continuous(labels = comma) +				
+	theme(axis.title.x = element_text(size = 14, angle = 00)) +				
+	theme(axis.title.y = element_text(size = rel(1.4), angle = 90)) +				
+	ggtitle("Incident type by month\n in 2013") + 
+	theme(plot.title = element_text(lineheight=.8, face="bold", color="black",size= 16, family = "mono"))				
+				
+ggplot(list2013Crimes, aes(IncidentDay, colour = CATEGORY)) +				
+	geom_freqpoly(aes(group = CATEGORY), size = 1, alpha = .5) + facet_wrap(~ CATEGORY, nrow = 9) +				
+	theme(text = element_text(size = 8,family = "mono", face = "bold"),				
+	axis.text.x = element_text(angle=90, vjust = 1)) +				
+	theme(legend.position="none") +				
+	scale_x_continuous(limits = c(1, 31), breaks = c(5,10,15,20,25,30)) +				
+	theme(strip.text.x = element_text(size = 6, colour = "red", angle = 0)) +				
+	xlab('Day') +				
+	ylab('Frequency') +				
+	scale_y_continuous(labels = comma) +				
+	theme(axis.title.x = element_text(size = 14, angle = 00)) +				
+	theme(axis.title.y = element_text(size = rel(1.4), angle = 90)) + 				
+	ggtitle("Incident type by day of month\n in 2013") + 
+	theme(plot.title = element_text(lineheight=.8, face="bold", color="black", size= 16,family = "mono"))				
+				
+ggplot(list2013Crimes, aes(WeekDay, colour = CATEGORY)) +				
+	geom_freqpoly(aes(group = CATEGORY), size = 1, alpha = .5) + facet_wrap(~ CATEGORY, nrow = 9) +				
+	theme(text = element_text(size = 8,family = "mono", face = "bold"),				
+	axis.text.x = element_text(angle=90, vjust = 1)) +				
+	theme(legend.position="none") +				
+	theme(strip.text.x = element_text(size = 6, colour = "red", angle = 0)) +					
+	xlab('Weekday') +
+	ylab('Frequency') +	
+	scale_y_continuous(labels = comma) +				
+	theme(axis.title.x = element_text(size = 14, angle = 00)) +				
+	theme(axis.title.y = element_text(size = rel(1.4), angle = 90)) +				
+	ggtitle("Incident type by day of the week\n in 2013") + 
+	theme(plot.title = element_text(lineheight=.8, face="bold", color="black", size= 16,family = "mono"))				
+				
+ggplot(list2013CrimesValidTime, aes(HourDayWhle, colour = CATEGORY)) +				
+	geom_freqpoly(aes(group = CATEGORY), size = 1, alpha = .5) + facet_wrap(~ CATEGORY, nrow = 9) +				
+	theme(text = element_text(size = 5,family = "mono", face = "bold"),				
+	axis.text.x = element_text(angle=90, vjust = 1)) +
+	theme(legend.position="none") +
+	theme(strip.text.x = element_text(size = 6, colour = "red", angle = 0)) +			
+	xlab('Hour \n(excludes records with missing times)') +			
+	ylab('Frequency') +	
+	scale_y_continuous(labels = comma) +				
+	theme(axis.title.x = element_text(size = 14 , angle = 00)) +			
+	theme(axis.title.y = element_text(size = rel(1.4), angle = 90)) +				
+	ggtitle("Incident type by hour of the day\n in 2013") + 
+	theme(plot.title = element_text(lineheight=.8, face="bold", color="black", size= 16, family = "mono"))				
+				
+dev.off()
